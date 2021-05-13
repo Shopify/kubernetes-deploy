@@ -52,9 +52,24 @@ module Krane
 
     private
 
+    def cluster_url()
+      @cluster_url ||= begin
+        raw_response, err, st = kubectl.run("config", "view", "--minify", "--output", "jsonpath={.clusters[*].cluster.server}", attempts: 5, use_namespace: false)
+        uri = if st.success?
+          if URI(raw_response).path == ( nil || "/" )
+            URI(raw_response).path
+          else
+            URI(raw_response).to_s
+          end
+        else
+          raise FatalKubeAPIError, "Error retrieving cluster url : #{err}"
+        end
+      end
+    end
+
     def api_paths
       @api_path_cache["/"] ||= begin
-        raw_json, err, st = kubectl.run("get", "--raw", "/", attempts: 5, use_namespace: false)
+        raw_json, err, st = kubectl.run("get", "--raw", cluster_url, attempts: 5, use_namespace: false)
         paths = if st.success?
           JSON.parse(raw_json)["paths"]
         else
@@ -66,7 +81,7 @@ module Krane
 
     def fetch_api_path(path)
       @api_path_cache[path] ||= begin
-        raw_json, err, st = kubectl.run("get", "--raw", path, attempts: 2, use_namespace: false)
+        raw_json, err, st = kubectl.run("get", "--raw", "#{cluster_url}#{path}", attempts: 2, use_namespace: false)
         if st.success?
           JSON.parse(raw_json)
         else
